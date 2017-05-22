@@ -53,8 +53,14 @@ var drop = function(callback) {
   console.log("Redis   - Vaciando")
   redisClient.flushdb(function(err, reply) {
     console.log("MongoDB - Vaciando")
-    Usuario.remove({}, function() {
-      callback()
+    Usuario.remove({}, () => {
+      Cuatrimestre.remove({}, () => {
+        Materia.remove({}, () => {
+          Curso.remove({}, () => {
+            callback()
+          })
+        })
+      })
     })
   })
 }
@@ -91,9 +97,11 @@ var crearCuatri = function(anio, numero, callback) {
     c.id = id - 1
     c.anio = anio
     c.numero = numero
-    redisClient.set("cuatrimestre:" + (parseInt(id) - 1), JSON.stringify(c), function(err, resp) {
+    redisClient.set("cuatrimestre:" + (parseInt(id) - 1), JSON.stringify(trimDoc(c)), function(err, resp) {
       console.log("MongoDB - Creando cuatrimestre")
+      console.log(c)
       c.save(function(err) {
+        console.log(err)
         callback(c.id)
       })
     })
@@ -111,8 +119,9 @@ var crearMateria = function(nombre, idcuatri, callback) {
       redisClient.set("materia:" + (parseInt(id) - 1), JSON.stringify(m), function(err, resp) {
         console.log("MongoDB - Creando materia")
         m.save(function(err) {
-          agregarMateria(cuatri, m)
-          callback(m.id)
+          m = trimDoc(m)
+          delete m['cuatrimestre']
+          agregarMateria(cuatri, m, () => callback(m.id))
         })
       })
     })
@@ -186,13 +195,29 @@ var getMateria = function(id, callback) {
 }
 
 var agregarMateria = (cuatri, materia, callback) => {
+  console.log("asd")
   if (cuatri.materias === undefined) cuatri.materias = []
+  console.log(materia)
   cuatri.materias.push(materia)
   console.log("Redis   - Agregando materia a cuatrimestre")
-  redisClient.set("cuatrimestre:" + idcuatri, JSON.stringify(cuatri), () => {
+  console.log(cuatri)
+  redisClient.set("cuatrimestre:" + cuatri.id, JSON.stringify(cuatri), () => {
     console.log("MongoDB - Agregando materia a cuatrimestre")
-    cuatri.update(() => callback())
+    Cuatrimestre.findOneAndUpdate({id: cuatri.id}, cuatri, callback)
   })
+}
+
+var getCuatrimestres = (callback) => {
+  Cuatrimestre.find({}, (err, cuatrimestres) => {
+    callback(cuatrimestres)
+  })
+}
+
+var trimDoc = (doc) => {
+  doc2 = JSON.parse(JSON.stringify(doc))
+  doc2._id = undefined
+  doc2.__v = undefined
+  return doc2
 }
 
 var cerrarConecciones = function() {
@@ -230,6 +255,16 @@ if ("d" in argv && "i" in argv) {
     cerrarConecciones()
     console.log()
     console.log(u)
+  })
+  foundArg = true
+} else if ("tree" in argv) {
+  getCuatrimestres((cuatrimestres) => {
+    console.log()
+    console.log("Cuatrimestres")
+    for(cuatri in cuatrimestres) {
+      console.log("    " + JSON.stringify(trimDoc(cuatrimestres[cuatri])))
+    }
+    cerrarConecciones()
   })
   foundArg = true
 }
